@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h2>Today's Mess Menu</h2>
+    <div id="menuContainer"></div>
+
+    <script>
+      async function loadMenu() {
+        try {
+          console.log("updating...........");
+          const res = await fetch("http://localhost:3000/get_menu");
+
+          const data = await res.json();
+          console.log(data);
+          const container = document.getElementById("menuContainer");
+          container.innerHTML = "";
+
+          data.forEach((meal) => {
+            const section = document.createElement("div");
+            section.innerHTML = `<h3>${meal.meal_type}</h3><p>${meal.items}</p>`;
+            container.appendChild(section);
+          });
+        } catch (error) {
+          console.error("Error loading menu:", error);
+        }
+      }
+      document.addEventListener("DOMContentLoaded", loadMenu);
+    </script>
+  </body>
+</html>

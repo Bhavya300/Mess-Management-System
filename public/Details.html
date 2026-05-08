@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <script>
+      window.addEventListener("DOMContentLoaded", async () => {
+        try {
+          const res = await fetch("/user-booking");
+          if (!res.ok) throw new Error("No booking");
+
+          const booking = await res.json();
+          document.getElementById("details").innerHTML = `
+      <h3>Your Booking</h3>
+      <p><strong>Name:</strong> ${booking.name}</p>
+      <p><strong>Days:</strong> ${booking.days}</p>
+      <p><strong>Valid From:</strong> ${booking.valid_from}</p>
+      <p><strong>Valid Till:</strong> ${booking.valid_till}</p>
+      <p><strong>Payment ID:</strong> ${booking.payment_id}</p>
+    `;
+        } catch (err) {
+          document.getElementById("details").innerText = "No booking found.";
+        }
+      });
+    </script>
+  </body>
+</html>

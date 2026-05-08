@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order your meal</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      .total-amount {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Order Your Meal</h1>
+    <form id="payment-form">
+      <label for="days">Enter the no of days:</label>
+      <input type="number" id="days" name="days" required />
+      <label>Price per Day: </label>
+      <span id="price-per-day">₹100</span>
+      <br /><br />
+      <div id="total-amount" class="total-amount">
+        Total amount= ₹<span id="amount-value">0</span>
+      </div>
+      <br /><br />
+      <button type="button" onclick="payNow()">Pay Now</button>
+    </form>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+      const pricePerDay = 100;
+      let loggedInUser = { name: "", email: "" };
+      fetch("/user-info")
+        .then((res) => res.json())
+        .then((data) => {
+          loggedInUser = data;
+        });
+
+      const daysInput = document.getElementById("days");
+      const totalAmountDiv = document.getElementById("total-amount");
+      const amountValueSpan = document.getElementById("amount-value");
+
+      daysInput.addEventListener("input", function () {
+        const days = parseInt(this.value) || 0;
+        if (days > 0) {
+          amountValueSpan.textContent = days * pricePerDay;
+          totalAmountDiv.style.display = "block";
+        } else {
+          totalAmountDiv.style.display = "none";
+          amountValueSpan.textContent = "0";
+        }
+      });
+
+      async function payNow() {
+        const days = parseInt(document.getElementById("days").value);
+        const amount = days * pricePerDay;
+        const response = await fetch("/create-order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount,
+            days,
+          }),
+        });
+
+        const order = await response.json();
+
+        const options = {
+          key: "rzp_test_okDc7v7NsZLjjQ",
+          amount: order.amount,
+          currency: "INR",
+          name: "Acme Corp",
+          description: `Meal Booking for ${days} day(s)`,
+          order_id: order.id,
+          handler: function (response) {
+            const days = parseInt(document.getElementById("days").value);
+            fetch("/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature,
+                days,
+              }),
+            })
+              .then((res) => res.json())
+              .then((data) => {
+                if (data.success) {
+                  window.location.href = "options.html";
+                } else {
+                  alert("Payment verification failed.");
+                }
+              });
+          },
+          prefill: {
+            name: loggedInUser.name,
+            email: loggedInUser.email,
+            contact: "9999999999",
+          },
+
+          theme: {
+            color: "#F37254",
+          },
+        };
+
+        const rzp = new Razorpay(options);
+        rzp.open();
+      }
+    </script>
+  </body>
+</html>

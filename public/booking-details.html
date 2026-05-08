@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Booking Details</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>✅ Your Booking Details</h1>
+      <div id="booking-info"></div>
+    </div>
+
+    <script>
+      async function fetchBooking() {
+        const res = await fetch("/my-booking");
+        const data = await res.json();
+
+        const infoDiv = document.getElementById("booking-info");
+
+        if (data.error) {
+          infoDiv.innerHTML = `<p style="color: red;">${data.error}</p>`;
+        } else {
+          const from = new Date(data.valid_from).toDateString();
+          const till = new Date(data.valid_till).toDateString();
+          infoDiv.innerHTML = `
+          <p><strong>Name:</strong> ${data.name}</p>
+          <p><strong>Days Booked:</strong> ${data.days}</p>
+          <p><strong>Valid From:</strong> ${from}</p>
+          <p><strong>Valid Till:</strong> ${till}</p>
+        `;
+        }
+      }
+
+      fetchBooking();
+    </script>
+  </body>
+</html>
