@@ -93,7 +93,7 @@ Create a `.env` file in the root directory and add your own database and Razorpa
 DB_HOST=localhost
 DB_USER=your_username
 DB_PASSWORD=your_password
-DB_DATABASE=mess_management
+DB_DATABASE=mess
 
 RAZORPAY_KEY_ID=your_key_id
 RAZORPAY_SECRET=your_secret_key
