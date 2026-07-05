@@ -24,6 +24,8 @@ app.use(
   }),
 );
 
+const PORT = process.env.PORT || 3000;
+
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -107,13 +109,12 @@ app.post("/create-order", async (req, res) => {
     });
     res.json(order);
   } catch (error) {
-    console.error("Order creation failed:", error);
     res.status(500).json({ error: error.message || "Something went wrong" });
   }
 });
 
 app.get("/get_menu", (req, res) => {
-  const mealType = req.query.type; // e.g., 'Breakfast'
+  const mealType = String(req.query.type || "").trim();
 
   if (!mealType) {
     return res
@@ -121,11 +122,11 @@ app.get("/get_menu", (req, res) => {
       .json({ error: "Meal type query parameter is required" });
   }
 
-  const sql = "SELECT items FROM menu WHERE meal_type = ?";
+  const normalizedMealType = mealType.toLowerCase();
+  const sql = "SELECT items FROM menu WHERE LOWER(meal_type) = ?";
 
-  db.query(sql, [mealType], (err, result) => {
+  db.query(sql, [normalizedMealType], (err, result) => {
     if (err) {
-      console.error("Error fetching menu:", err);
       return res.status(500).json({ error: "Database error" });
     }
 
@@ -257,7 +258,6 @@ app.post("/update", async (req, res) => {
       return res.send("New menu entry created successfully");
     }
   } catch (err) {
-    console.error("Error updating menu:", err);
     return res.status(500).send("Internal server error updating menu");
   }
 });
@@ -325,7 +325,6 @@ app.post("/verify-payment", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Payment verification failed", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -333,5 +332,5 @@ app.post("/verify-payment", async (req, res) => {
 app.use(express.static("public"));
 
 app.listen(3000, () => {
-  console.log("Server running at http://localhost:3000");
+  console.log(`Server running on port ${PORT}`);
 });
