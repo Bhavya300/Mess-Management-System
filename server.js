@@ -2,6 +2,7 @@ const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 const path = require("path");
+const bcrypt = require("bcrypt");
 const Razorpay = require("razorpay");
 const session = require("express-session");
 const bodyParser = require("body-parser");
@@ -30,18 +31,43 @@ const db = mysql.createConnection({
   database: process.env.DB_DATABASE,
 });
 
+const razorpaySecret =
+  process.env.RAZORPAY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
+  key_secret: razorpaySecret,
 });
 
 db.connect((err) => {
   if (err) {
-    console.error("❌ Database connection failed:", err.message);
+    console.error("Database connection failed:", err.message);
   } else {
-    console.log("✅ Connected to MySQL database");
+    console.log("Connected to database");
+    ensureBookingColumns().catch((migrationErr) => {
+      console.error("Booking table migration failed:", migrationErr.message);
+    });
   }
 });
+
+async function ensureBookingColumns() {
+  try {
+    const [rows] = await db
+      .promise()
+      .execute("SHOW COLUMNS FROM bookings LIKE 'amount'");
+    if (rows.length === 0) {
+      await db
+        .promise()
+        .execute(
+          "ALTER TABLE bookings ADD COLUMN amount DECIMAL(10,2) DEFAULT NULL",
+        );
+    }
+  } catch (err) {
+    if (err.code !== "ER_NO_SUCH_TABLE") {
+      throw err;
+    }
+  }
+}
 
 app.get("/testapi", (req, res) => {
   res.json({ msg: "API works!" });
@@ -87,53 +113,117 @@ app.post("/create-order", async (req, res) => {
 });
 
 app.get("/get_menu", (req, res) => {
-  console.log("GET /get_menu hit");
-  const sql = "SELECT meal_type, items FROM menu";
+  const mealType = req.query.type; // e.g., 'Breakfast'
 
-  db.query(sql, (err, result) => {
+  if (!mealType) {
+    return res
+      .status(400)
+      .json({ error: "Meal type query parameter is required" });
+  }
+
+  const sql = "SELECT items FROM menu WHERE meal_type = ?";
+
+  db.query(sql, [mealType], (err, result) => {
     if (err) {
       console.error("Error fetching menu:", err);
       return res.status(500).json({ error: "Database error" });
     }
-    console.log(result);
-    res.json(result);
+
+    if (result.length === 0) {
+      return res.json([]);
+    }
+
+    // Gathers ['Dosa', 'Chutney', 'Tea'] -> combines into "Dosa, Chutney, Tea"
+    const combinedItems = result.map((row) => row.items).join(", ");
+
+    // Sends back a perfectly clean, non-repeating format
+    res.json([
+      {
+        meal_type: mealType,
+        items: combinedItems,
+      },
+    ]);
   });
 });
 
-app.get("/user-booking", async (req, res) => {
-  const userId = req.session.user.id;
-  const [rows] = await db.execute(
-    "SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-    [userId],
-  );
+app.get(["/my-booking", "/user-booking"], async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: "User not logged in" });
+  }
 
-  if (rows.length === 0) return res.status(404).send("No booking found.");
-  res.json(rows[0]);
+  const userId = req.session.user.id;
+  const [rows] = await db
+    .promise()
+    .execute(
+      "SELECT * FROM bookings WHERE user_id = ? ORDER BY valid_from DESC, valid_till DESC",
+      [userId],
+    );
+
+  if (rows.length === 0) return res.json([]);
+  res.json(rows);
 });
 
-app.post("/login", (req, res) => {
-  const { email, password } = req.body;
-  const sql = "SELECT * FROM users WHERE email = ? AND password = ?";
+app.get("/all-bookings", async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: "User not logged in" });
+  }
 
-  db.query(sql, [email, password], (err, results) => {
+  const role = (req.session.user.role || "").toLowerCase();
+  if (role !== "owner" && role !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  const [rows] = await db
+    .promise()
+    .execute(
+      "SELECT * FROM bookings ORDER BY valid_from DESC, valid_till DESC",
+    );
+
+  const bookings = rows.map((booking) => {
+    const today = new Date();
+    const start = booking.valid_from ? new Date(`${booking.valid_from}`) : null;
+    const end = booking.valid_till ? new Date(`${booking.valid_till}`) : null;
+    const isActive = start && end && today >= start && today <= end;
+
+    return {
+      ...booking,
+      status: isActive ? "Ongoing" : "Done",
+    };
+  });
+
+  res.json(bookings);
+});
+
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  const sql = "SELECT * FROM users WHERE email = ?";
+
+  db.query(sql, [email], async (err, results) => {
     if (err) return res.status(500).send("Server error");
 
-    if (results.length > 0) {
-      req.session.user = results[0];
-      res.json({ role: results[0].role });
-    } else {
-      res.json({ role: null });
+    if (results.length === 0) {
+      return res.json({ role: null });
     }
+    const user = results[0];
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.json({ role: null });
+    }
+    req.session.user = user;
+    res.json({
+      role: user.role,
+    });
   });
 });
 
-app.post("/signup", (req, res) => {
+app.post("/signup", async (req, res) => {
   const { name, email, password, role } = req.body;
-
+  const saltRounds = 12;
+  const hash = await bcrypt.hash(password, saltRounds);
   const sql =
     "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
 
-  db.query(sql, [name, email, password, role], (err, result) => {
+  db.query(sql, [name, email, hash, role], (err, result) => {
     if (err) {
       if (err.code === "ER_DUP_ENTRY") {
         return res.status(400).send("User already exists");
@@ -144,57 +234,99 @@ app.post("/signup", (req, res) => {
   });
 });
 
-app.post("/update", (req, res) => {
-  const { meal_type, items } = req.body;
+app.post("/update", async (req, res) => {
+  const mealType = String(req.body.meal_type || "")
+    .trim()
+    .toLowerCase();
+  const items = String(req.body.items || "").trim();
 
-  const sql = `
-    INSERT INTO menu (meal_type, items)
-    VALUES (?, ?)
-    ON DUPLICATE KEY UPDATE items = VALUES(items)
-  `;
+  if (!mealType || !items) {
+    return res.status(400).send("Meal type and items are required");
+  }
 
-  db.query(sql, [meal_type, items], (err) => {
-    if (err) return res.status(500).send("Error updating menu");
-    res.send("Menu updated successfully");
-  });
+  try {
+    const [result] = await db.promise().execute(
+      `INSERT INTO menu (meal_type, items) 
+       VALUES (?, ?) 
+       ON DUPLICATE KEY UPDATE items = VALUES(items)`,
+      [mealType, items],
+    );
+    if (result.affectedRows === 2) {
+      return res.send("Menu updated successfully");
+    } else {
+      return res.send("New menu entry created successfully");
+    }
+  } catch (err) {
+    console.error("Error updating menu:", err);
+    return res.status(500).send("Internal server error updating menu");
+  }
 });
 
 const crypto = require("crypto");
 
 app.post("/verify-payment", async (req, res) => {
-  const { razorpay_payment_id, razorpay_order_id, razorpay_signature, days } =
-    req.body;
+  try {
+    const {
+      razorpay_payment_id,
+      razorpay_order_id,
+      razorpay_signature,
+      days,
+      amount,
+    } = req.body;
 
-  const generated_signature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_SECRET)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest("hex");
+    if (!req.session.user) {
+      return res
+        .status(401)
+        .json({ success: false, error: "User not logged in" });
+    }
 
-  if (generated_signature === razorpay_signature) {
-    const userId = req.session.user.id; // get from session
+    if (!razorpay_payment_id || !razorpay_order_id) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing Razorpay payment details" });
+    }
+
+    const userId = req.session.user.id;
     const name = req.session.user.name;
 
     const valid_from = new Date();
     const valid_till = new Date();
-    valid_till.setDate(valid_from.getDate() + parseInt(days));
+    valid_till.setDate(valid_from.getDate() + parseInt(days || 0));
 
-    await db.execute(
-      `INSERT INTO bookings (user_id, name, days, valid_from, valid_till, payment_id, order_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    const paidAmount = Number(amount || 0);
+
+    const [result] = await db.promise().execute(
+      `INSERT INTO bookings (user_id, name, days, valid_from, valid_till, amount, payment_id, order_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         name,
         days,
         valid_from.toISOString().split("T")[0],
         valid_till.toISOString().split("T")[0],
+        paidAmount,
         razorpay_payment_id,
         razorpay_order_id,
       ],
     );
 
-    res.json({ success: true });
-  } else {
-    res.json({ success: false });
+    return res.json({
+      success: true,
+      booking: {
+        id: result.insertId,
+        user_id: userId,
+        name,
+        days,
+        valid_from: valid_from.toISOString().split("T")[0],
+        valid_till: valid_till.toISOString().split("T")[0],
+        amount: paidAmount,
+        payment_id: razorpay_payment_id,
+        order_id: razorpay_order_id,
+      },
+    });
+  } catch (err) {
+    console.error("Payment verification failed", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

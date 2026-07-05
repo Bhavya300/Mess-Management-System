@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Update Menu</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="signup-container">
+      <h2>Update Daily Menu</h2>
+
+      <form id="menuForm">
+        <div class="input-group">
+          <label for="mealType">Select Meal Type</label>
+          <select id="mealType" name="meal_type" required>
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label for="menuItems">Menu Items</label>
+          <textarea
+            id="menuItems"
+            name="items"
+            placeholder="E.g., Idli, Sambar, Chutney"
+            required
+          ></textarea>
+        </div>
+
+        <button type="submit" class="payment-btn menu-action">
+          Update Menu
+        </button>
+      </form>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

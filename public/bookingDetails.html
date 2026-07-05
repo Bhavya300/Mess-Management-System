@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Booking Details</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container booking-page">
+      <h1>Your Booking Details</h1>
+      <div id="booking-info" class="booking-card"></div>
+    </div>
+
+    <script>
+      function toDate(value) {
+        if (!value) return new Date();
+        return new Date(value);
+      }
+
+      function renderBookings(bookings) {
+        const infoDiv = document.getElementById("booking-info");
+        const bookingList = Array.isArray(bookings)
+          ? bookings
+          : bookings
+            ? [bookings]
+            : [];
+
+        if (bookingList.length === 0) {
+          infoDiv.innerHTML = '<p class="empty-state">No bookings found.</p>';
+          return;
+        }
+
+        const rows = bookingList
+          .map((booking) => {
+            const from = toDate(booking.valid_from).toDateString();
+            const till = toDate(booking.valid_till).toDateString();
+            const today = new Date();
+            const start = toDate(booking.valid_from);
+            const end = toDate(booking.valid_till);
+            const isActive = today >= start && today <= end;
+            const statusClass = isActive ? "status-active" : "status-inactive";
+            const statusText = isActive ? "Ongoing" : "Expired";
+
+            return `
+              <tr>
+                <td>${booking.name || "User"}</td>
+                <td>₹${Number(booking.amount || 0).toFixed(2)}</td>
+                <td>${from}</td>
+                <td>${till}</td>
+                <td><span class="status-banner ${statusClass}">${statusText}</span></td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        infoDiv.innerHTML = `
+          <table class="booking-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Amount Paid</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      async function fetchBooking() {
+        sessionStorage.removeItem("lastBooking");
+
+        try {
+          const res = await fetch("/my-booking");
+          const bookings = await res.json();
+          renderBookings(bookings);
+        } catch (err) {
+          console.error(err);
+          document.getElementById("booking-info").innerHTML =
+            '<p class="empty-state">Unable to load bookings.</p>';
+        }
+      }
+
+      fetchBooking();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Today's Menu Selection</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="signup-container">
+      <h2>TODAY'S MESS MENU</h2>
+
+      <div class="menu-button-group">
+        <button
+          type="button"
+          class="menu-select-btn"
+          onclick="loadMenu('Breakfast')"
+        >
+          Breakfast
+        </button>
+        <button
+          type="button"
+          class="menu-select-btn"
+          onclick="loadMenu('Lunch')"
+        >
+          Lunch
+        </button>
+        <button
+          type="button"
+          class="menu-select-btn"
+          onclick="loadMenu('Dinner')"
+        >
+          Dinner
+        </button>
+      </div>
+
+      <div id="menuContainer" class="menu-display-area"></div>
+    </div>
+
+    <script>
+      async function loadMenu(mealType) {
+        try {
+          console.log(`Fetching ${mealType} from server...`);
+          const res = await fetch(
+            `http://localhost:3000/get_menu?type=${mealType}`,
+          );
+          const data = await res.json();
+          console.log(data);
+
+          const container = document.getElementById("menuContainer");
+          container.innerHTML = ""; // Instantly wipes out the old menu list
+
+          if (data.length === 0) {
+            container.innerHTML = `<div class="menu-item-row"><p>No items listed for ${mealType} today.</p></div>`;
+            return;
+          }
+
+          const section = document.createElement("div");
+          section.className = "menu-item-row highlighted-menu";
+
+          section.innerHTML = `
+      <h3>${data[0].meal_type}</h3>
+      <p>${data[0].items}</p>
+    `;
+
+          container.appendChild(section);
+        } catch (error) {
+          console.error("Error loading menu:", error);
+        }
+      }
+    </script>
+  </body>
+</html>
